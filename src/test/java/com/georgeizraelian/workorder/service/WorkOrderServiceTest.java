@@ -64,7 +64,7 @@ class WorkOrderServiceTest {
     void statusUpdateChangesOnlyStatus() {
         WorkOrder workOrder = sampleWorkOrder();
         when(workOrderRepository.findById(1L)).thenReturn(Optional.of(workOrder));
-        when(workOrderRepository.save(workOrder)).thenReturn(workOrder);
+        when(workOrderRepository.saveAndFlush(workOrder)).thenReturn(workOrder);
 
         var response = workOrderService.updateStatus(
                 1L, new UpdateStatusRequest(WorkOrderStatus.COMPLETED));

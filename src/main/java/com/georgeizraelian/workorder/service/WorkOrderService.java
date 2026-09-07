@@ -67,14 +67,14 @@ public class WorkOrderService {
         workOrder.setPriority(request.priority());
         workOrder.setRequesterEmail(request.requesterEmail());
         workOrder.setDueDate(request.dueDate());
-        return toResponse(workOrderRepository.save(workOrder));
+        return toResponse(workOrderRepository.saveAndFlush(workOrder));
     }
 
     @Transactional
     public WorkOrderResponse updateStatus(Long id, UpdateStatusRequest request) {
         WorkOrder workOrder = findWorkOrder(id);
         workOrder.setStatus(request.status());
-        return toResponse(workOrderRepository.save(workOrder));
+        return toResponse(workOrderRepository.saveAndFlush(workOrder));
     }
 
     @Transactional
