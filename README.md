@@ -140,6 +140,12 @@ Public list request:
 curl http://localhost:8080/api/work-orders
 ```
 
+Live public list request:
+
+```bash
+curl https://api.georgeizraelian.com/api/work-orders
+```
+
 Authenticated creation:
 
 ```bash
@@ -180,13 +186,30 @@ Only the Actuator health endpoint is exposed over HTTP.
 
 ## Live Demo
 
-Live API: Coming soon
-
-Swagger: Coming soon
+- Swagger UI: [https://api.georgeizraelian.com/swagger-ui/index.html](https://api.georgeizraelian.com/swagger-ui/index.html)
+- Public API: [https://api.georgeizraelian.com/api/work-orders](https://api.georgeizraelian.com/api/work-orders)
+- Health: [https://api.georgeizraelian.com/actuator/health](https://api.georgeizraelian.com/actuator/health)
 
 ## Deployment
 
-The application is designed to run as a Spring Boot JAR behind Nginx with PostgreSQL.
+The public portfolio demo runs on a DigitalOcean server using this deployment path:
+
+```text
+Internet
+  |
+  v
+Nginx / HTTPS
+  |
+  v
+Spring Boot
+127.0.0.1:8080
+  |
+  v
+PostgreSQL
+localhost:5432
+```
+
+Ubuntu 24.04 hosts the Spring Boot JAR, and systemd manages the Java process. Nginx provides the public HTTPS reverse proxy while Spring Boot listens only on localhost. PostgreSQL also runs locally on the server and is not exposed publicly. Application and database credentials are supplied through environment variables and are not stored in Git.
 
 ## License
 
