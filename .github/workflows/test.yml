@@ -16,5 +16,9 @@ jobs:
           distribution: temurin
           java-version: "21"
           cache: maven
-      - name: Run tests
-        run: ./mvnw test
+      - name: Test and package application
+        run: ./mvnw clean verify
+      - name: Build runtime image
+        run: docker build -t spring-work-order-api:local .
+      - name: Verify isolated Compose startup and persistence
+        run: python3 scripts/verify_compose.py

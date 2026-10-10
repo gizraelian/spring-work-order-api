@@ -11,8 +11,9 @@ A small Spring Boot REST API for creating and managing service work orders. I bu
 - HTTP Basic protection for write operations
 - Public Swagger/OpenAPI documentation
 - Actuator health endpoint
-- JUnit 5, Mockito, and MockMvc tests using H2
-- Fictional demo records inserted only when the database is empty
+- Fast JUnit 5, Mockito, MockMvc, and H2 tests plus full-context PostgreSQL Testcontainers HTTP tests
+- Versioned PostgreSQL schema through Flyway in explicitly enabled environments
+- Opt-in fictional demo records in development only, when the database is empty
 
 ## Tech Stack
 
@@ -24,7 +25,7 @@ A small Spring Boot REST API for creating and managing service work orders. I bu
 - Spring Security
 - Spring Boot Actuator
 - JUnit 5 and MockMvc
-- H2 for automated tests
+- H2 for fast repository tests; disposable PostgreSQL 16.10 via Testcontainers for integration tests
 - springdoc-openapi / Swagger UI
 - Maven and Maven Wrapper
 
@@ -49,7 +50,7 @@ PostgreSQL
 - `WorkOrderController` handles HTTP requests, validation, and response status codes.
 - `WorkOrderService` contains application operations and maps entities to response DTOs.
 - `WorkOrderRepository` provides persistence and the small set of filter queries.
-- PostgreSQL stores work orders when the application runs normally; tests use H2 instead.
+- PostgreSQL stores work orders normally and in the container-backed integration suite; the fast repository test uses H2.
 
 ## API Endpoints
 
@@ -89,7 +90,27 @@ Windows:
 mvnw.cmd test
 ```
 
-Tests use an in-memory H2 database and do not require PostgreSQL or another external service.
+The default `test` command runs both the existing fast tests and `WorkOrderPostgresIntegrationTest`. Java 21 and a running Docker engine that supports Linux containers are required for the full suite. You do not need a host PostgreSQL installation. On Windows, start Docker Desktop manually and verify `docker info` reports a Linux server. The first run may download the PostgreSQL image and Testcontainers cleanup image.
+
+The integration suite starts `postgres:16.10-alpine` with a disposable database and a real Spring Boot application on a random loopback HTTP port. It uses the actual security filter chain, controller, service and JPA persistence, not mocked beans or H2. It covers unauthorized/invalid writes, 201/Location creation, committed status updates and public retrieval, malformed status, combined filters and sorted pagination.
+
+Before each case, the test verifies the datasource product, URL and database name match the running container, then clears only that disposable table. Fixture counts and IDs do not depend on startup demo records. Explicit test-only credentials and container datasource bindings override application defaults; no deployed secrets or database are used. Tests do not run inside a rollback-only test transaction, so independent JDBC reads verify committed HTTP writes.
+
+Run only the PostgreSQL suite:
+
+```powershell
+.\mvnw.cmd "-Dtest=WorkOrderPostgresIntegrationTest" test
+```
+
+Run the existing fast suites without starting a PostgreSQL container:
+
+```powershell
+.\mvnw.cmd "-Dtest=WorkOrderServiceTest,WorkOrderControllerTest,WorkOrderRepositoryTest" test
+```
+
+On macOS/Linux, replace `.\mvnw.cmd` with `./mvnw`. H2 is retained only in the fast repository suite; it is never a fallback for the PostgreSQL tests. If Docker or PostgreSQL startup fails, the full suite fails rather than skipping integration coverage. The existing GitHub Actions `./mvnw test` step automatically discovers this `*Test` class; no opt-in profile or separate CI step is needed.
+
+Surefire summaries are written to `target/surefire-reports`. PostgreSQL tests now run Flyway V1 and Hibernate `validate`. `SchemaLifecycleIntegrationTest` also verifies migration history, schema metadata/constraints, restart/data retention, rejected unmanaged schemas, environment guards and opt-in development seeding. Fast H2 repository tests retain their separate `create-drop` profile with Flyway disabled. Docker startup failure still fails the full suite.
 
 ## Building
 
@@ -105,32 +126,61 @@ Windows:
 mvnw.cmd clean package
 ```
 
+## Production safety and adoption gate
+
+**Do not deploy M2 to the existing portfolio database without a separately approved adoption procedure.** Production/default configuration now requires explicit database and application credentials, disables Flyway and uses Hibernate `validate`. Missing/blank credentials reject startup; an incompatible existing schema may also reject startup. No production credential verification, database connection, baseline, migration, deployment or restart was performed.
+
+See [proposed production adoption procedure](docs/PRODUCTION_ADOPTION.md) for schema inventory, verified backup/restore rehearsal, explicit baseline compatibility and rollback planning. `baseline-on-migrate` is false and Flyway clean is disabled. Activating migrations on a non-empty unmanaged database fails instead of silently baselining it.
+
+Existing Basic authentication, disabled CSRF and authentication-only write rules remain unchanged. Stateless Basic can need CSRF protection for browser clients that automatically attach credentials. Public reads include requester email, so demo data must remain fictional. Production defaults were removed from code; the actual deployed credential values remain unverified.
+
+## Local Docker Compose
+
+A non-root Java 21 runtime image and local API/PostgreSQL Compose stack are available. Package the tested JAR with `./mvnw clean verify`, configure an ignored local credential file, then build/start Compose. The API binds to localhost; PostgreSQL has no published host port. Flyway runs only in the local dev profile, Hibernate validates, demo seeding is opt-in, and a named volume preserves database state.
+
+See [Docker development runbook](docs/DOCKER_DEVELOPMENT.md) for exact commands, health checks, persistence verification, cleanup, configuration failures and troubleshooting. `python scripts/verify_compose.py` verifies a new disposable project using generated local-only credentials and cleans only its resources. CI also packages/builds/verifies this stack; it does not publish images or deploy.
+
+**This is not a production deployment configuration.** The existing [production adoption gate](docs/PRODUCTION_ADOPTION.md) remains in force.
+
 ## Configuration
 
 The application reads these environment variables:
 
-| Variable | Purpose | Development fallback |
+| Variable | Purpose | Default/production behavior |
 | --- | --- | --- |
-| `DB_URL` | PostgreSQL JDBC URL | `jdbc:postgresql://localhost:5432/workorder` |
-| `DB_USERNAME` | PostgreSQL username | `workorder_app` |
-| `DB_PASSWORD` | PostgreSQL password | Empty; set this locally |
-| `APP_USERNAME` | HTTP Basic username | `admin` |
-| `APP_PASSWORD` | HTTP Basic password | `change-me`; replace before use |
+| `DB_URL` | PostgreSQL JDBC URL | Required explicitly |
+| `DB_USERNAME` | PostgreSQL username | Required explicitly |
+| `DB_PASSWORD` | PostgreSQL password | Required; blank rejected |
+| `APP_USERNAME` | HTTP Basic username | Required explicitly |
+| `APP_PASSWORD` | HTTP Basic password | Required; blank rejected |
 
 Copy `.env.example` as a reference for the expected values. Spring Boot does not load `.env` files automatically, so provide the variables through your shell, IDE run configuration, or deployment service. The `.env` file is ignored by Git.
+
+### Environment modes
+
+| Mode | Schema owner | Credential/seed policy |
+| --- | --- | --- |
+| No active profile, or `prod` | Existing schema only; Hibernate validates; Flyway disabled | All five settings above required; no demo seeding |
+| `dev` | Flyway V1/validation on a personal development database | Local URL/user and explicitly labeled local-only API defaults; set DB_PASSWORD; seed off |
+| `dev` plus `app.demo.seed=true` | Same as dev | Fictional records only if empty; repeated startup does not duplicate them |
+| `migrated` (optionally with `prod`) | Flyway/validation | Explicit credentials and `app.migrations.approved=true` required outside dev/test; use only after adoption approval |
+| `postgres-integration` (test resources only) | Disposable PostgreSQL/Flyway/validation | Container bindings/test credentials, seed off |
+| `test` (test resources only) | Fast H2/create-drop; Flyway disabled | Existing fast fixture credentials |
+
+`prod` mixed with dev/test profiles is rejected. Without a production profile, production-safe defaults still apply. Command-line/external/environment properties can override packaged settings; operators must review the effective values and active profiles. Required checks occur before datasource beans initialize and error messages identify keys, not credential values. The approval flag records deployment intent; it is not a substitute for human authorization. Spring Boot does not automatically load `.env` files.
 
 ## Running Locally
 
 1. Install Java 21 and make sure PostgreSQL is running.
-2. Create a `workorder` database and a PostgreSQL user that can manage its schema.
+2. Create an empty personal `workorder` development database and a PostgreSQL user that can manage its schema. Do not use the existing deployed database.
 3. Set `DB_PASSWORD`, `APP_USERNAME`, and `APP_PASSWORD`. Set the other variables too if your database does not use the documented defaults.
 4. Start the application:
 
 ```bash
-./mvnw spring-boot:run
+./mvnw spring-boot:run -Dspring-boot.run.profiles=dev
 ```
 
-On Windows, run `mvnw.cmd spring-boot:run` instead. The application uses Hibernate `ddl-auto=update` to manage the small demo schema.
+On Windows, run `.\mvnw.cmd "-Dspring-boot.run.profiles=dev" spring-boot:run`. Flyway creates the fresh development schema; Hibernate validates it. To opt into fictional data, explicitly supply `app.demo.seed=true` through Spring configuration (for example `-Dspring-boot.run.arguments="--app.demo.seed=true"`). Never activate dev or test profiles on production. Existing unmanaged development databases also require a separately reviewed adoption plan or a new disposable database.
 
 ## Example Requests
 

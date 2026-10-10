@@ -7,11 +7,15 @@ import com.georgeizraelian.workorder.repository.WorkOrderRepository;
 import org.springframework.boot.CommandLineRunner;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.context.annotation.Profile;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 
 import java.time.LocalDate;
 import java.util.List;
 
 @Configuration
+@Profile("dev & !prod")
+@ConditionalOnProperty(name = "app.demo.seed", havingValue = "true")
 public class DemoDataConfig {
 
     @Bean

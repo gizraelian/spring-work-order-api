@@ -1,0 +1,41 @@
+# Personal LOCAL DEVELOPMENT only. Never use this file to adopt/deploy the existing production DB.
+services:
+  db:
+    image: postgres:16.10-alpine@sha256:029660641a0cfc575b14f336ba448fb8a75fd595d42e1fa316b9fb4378742297
+    environment:
+      POSTGRES_DB: workorder
+      POSTGRES_USER: ${LOCAL_DB_USERNAME:?Set LOCAL_DB_USERNAME for this local database}
+      POSTGRES_PASSWORD: ${LOCAL_DB_PASSWORD:?Set LOCAL_DB_PASSWORD for this local database}
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -U \"$$POSTGRES_USER\" -d \"$$POSTGRES_DB\""]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+      start_period: 10s
+    # No published database port; reachable only by containers on this project's network.
+
+  api:
+    build: .
+    image: spring-work-order-api:local
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      SPRING_PROFILES_ACTIVE: dev
+      DB_URL: jdbc:postgresql://db:5432/workorder
+      DB_USERNAME: ${LOCAL_DB_USERNAME:?Set LOCAL_DB_USERNAME for this local database}
+      DB_PASSWORD: ${LOCAL_DB_PASSWORD:?Set LOCAL_DB_PASSWORD for this local database}
+      APP_USERNAME: ${LOCAL_APP_USERNAME:?Set LOCAL_APP_USERNAME for this local API}
+      APP_PASSWORD: ${LOCAL_APP_PASSWORD:?Set LOCAL_APP_PASSWORD for this local API}
+      APP_DEMO_SEED: ${LOCAL_DEMO_SEED:-false}
+      SERVER_ADDRESS: 0.0.0.0
+    ports:
+      - "127.0.0.1:${LOCAL_API_PORT:-8080}:8080"
+    read_only: true
+    tmpfs:
+      - /tmp
+
+volumes:
+  postgres-data:

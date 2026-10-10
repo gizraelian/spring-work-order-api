@@ -1,0 +1,7 @@
+# Only the packaged artifact enters the build context; exclude source, Git, logs and credentials.
+*
+!Dockerfile
+!.dockerignore
+!target/
+target/*
+!target/work-order-api-0.0.1-SNAPSHOT.jar

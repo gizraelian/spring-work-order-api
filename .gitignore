@@ -6,3 +6,6 @@ target/
 *.iml
 .DS_Store
 Thumbs.db
+
+# Local Compose credentials; retain only the blank template.
+.env.compose.local
