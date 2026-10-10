@@ -1,0 +1,13 @@
+# Opt-in override of the existing isolated development stack. Never deploy this file.
+services:
+  api:
+    environment:
+      SPRING_PROFILES_ACTIVE: dev,local-browser
+      LOCAL_BROWSER_ENABLED: ${LOCAL_BROWSER_ENABLED:?Explicitly enable local browser authentication}
+      APP_LOCAL_BROWSER_ALLOW_LOOPBACK_HTTP: "true"
+      APP_LOCAL_BROWSER_COMPOSE_ISOLATED: "true"
+      SERVER_SERVLET_SESSION_COOKIE_SECURE: "false"
+      SERVER_SERVLET_SESSION_TIMEOUT: ${LOCAL_BROWSER_SESSION_TIMEOUT:-15m}
+    # Exact browser proxy target, fixed loopback port (no configurable public binding).
+    ports: !override
+      - "127.0.0.1:8080:8080"

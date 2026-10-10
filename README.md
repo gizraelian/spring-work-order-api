@@ -268,3 +268,7 @@ This project is available under the MIT License.
 ## M4B local workflow
 
 See [M4B design, safeguards and verification](docs/M4B_LOCAL_WORKFLOW.md). Browser writes remain blocked pending CSRF-safe authentication; typed forms are tested and local API persistence is verified separately.
+
+## M4C secure local browser workflow
+
+See [M4C verification and local setup](docs/M4C_VERIFICATION.md) and [security design](docs/M4C_SECURITY_DESIGN.md). The explicit local-browser profile/build supports session login, CSRF-protected writes and logout; production/default behavior remains isolated.
