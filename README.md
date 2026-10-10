@@ -264,3 +264,7 @@ Ubuntu 24.04 hosts the Spring Boot JAR, and systemd manages the Java process. Ng
 ## License
 
 This project is available under the MIT License.
+
+## M4B local workflow
+
+See [M4B design, safeguards and verification](docs/M4B_LOCAL_WORKFLOW.md). Browser writes remain blocked pending CSRF-safe authentication; typed forms are tested and local API persistence is verified separately.

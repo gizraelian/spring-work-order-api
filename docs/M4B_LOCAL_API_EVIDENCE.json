@@ -1,0 +1,21 @@
+{
+  "verifiedAt": "2026-10-10T21:05:39.734816+00:00",
+  "browserWrites": "BLOCKED_CSRF_AUTHENTICATION",
+  "checks": [
+    "401 create and status",
+    "400 create and status field errors",
+    "201 create",
+    "GET retrieve",
+    "PATCH status",
+    "filtered GET",
+    "direct PostgreSQL row",
+    "persisted API and SQL values after restart",
+    "persisted API and SQL values after recreate"
+  ],
+  "orderId": 1,
+  "title": "M4B fictional persistence fixture",
+  "status": "IN_PROGRESS",
+  "priority": "HIGH",
+  "loopbackOnly": true,
+  "isolatedProjectRemoved": true
+}

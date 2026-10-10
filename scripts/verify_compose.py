@@ -1,5 +1,7 @@
 """Verify only a new, isolated local Compose project; no production endpoints or credentials."""
 import base64
+import argparse
+from datetime import datetime, timezone
 import json
 import os
 from pathlib import Path
@@ -13,6 +15,10 @@ import urllib.request
 
 def main():
     repo = Path(__file__).resolve().parents[1]
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--evidence', action='store_true', help='Save sanitized M4B evidence inside this repository')
+    evidence_requested = parser.parse_args().evidence
+    evidence = {'verifiedAt': datetime.now(timezone.utc).isoformat(), 'browserWrites': 'BLOCKED_CSRF_AUTHENTICATION', 'checks': []}
     project = "workorder-m3-" + secrets.token_hex(6)
     with socket.socket() as listener:
         listener.bind(("127.0.0.1", 0))
@@ -54,7 +60,11 @@ def main():
         created = False
         base = f"http://127.0.0.1:{port}"
         # Ignore system proxies; every request stays on the loopback Compose port.
-        client = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+        class NoRedirect(urllib.request.HTTPRedirectHandler):
+            def redirect_request(self, req, fp, code, msg, headers, newurl):
+                return None  # Never forward local credentials/requests to another endpoint.
+
+        client = urllib.request.build_opener(urllib.request.ProxyHandler({}), NoRedirect())
 
         def request(path, *, method="GET", body=None, authenticated=False):
             headers = {"Accept": "application/json"}
@@ -69,7 +79,12 @@ def main():
                 with client.open(req, timeout=15) as response:
                     return response.status, response.headers, json.loads(response.read())
             except urllib.error.HTTPError as error:
-                return error.code, error.headers, None
+                raw = error.read()
+                try:
+                    payload = json.loads(raw)
+                except (ValueError, UnicodeDecodeError):
+                    payload = None
+                return error.code, error.headers, payload
 
         def sql(query):
             return run(compose + ["exec", "-T", "db", "psql", "-U", env["LOCAL_DB_USERNAME"],
@@ -100,21 +115,38 @@ def main():
             if sql("SELECT version || ':' || success FROM flyway_schema_history") != "1:true":
                 raise AssertionError("Unexpected migration history")
             print("PASS: healthy non-root API; localhost-only API port; DB unpublished; fresh V1; no seed")
-            body = {"title": "M3 persistence fixture", "priority": "HIGH", "requesterEmail": "fixture@example.com"}
+            body = {"title": "M4B fictional persistence fixture", "priority": "HIGH", "requesterEmail": "fixture@example.com"}
             if request("/api/work-orders", method="POST", body=body)[0] != 401:
                 raise AssertionError("Unauthenticated write accepted")
             if request("/api/work-orders", method="POST", body={"title": " "}, authenticated=True)[0] != 400:
                 raise AssertionError("Invalid write accepted")
+            invalid = request('/api/work-orders', method='POST', body={'title': ' ', 'requesterEmail': 'invalid'}, authenticated=True)
+            if invalid[0] != 400:
+                raise AssertionError('Invalid create was not rejected')
+            if not {'title', 'priority', 'requesterEmail'} <= invalid[2]['validationErrors'].keys():
+                raise AssertionError('Backend field errors missing')
             status, headers, order = request("/api/work-orders", method="POST", body=body, authenticated=True)
             if status != 201 or headers.get("Location") != f"/api/work-orders/{order['id']}":
                 raise AssertionError("Create contract mismatch")
             path = f"/api/work-orders/{order['id']}"
+            if request(path)[2]['title'] != body['title']:
+                raise AssertionError('Created order could not be retrieved')
+            if request(path + '/status', method='PATCH', body={'status': 'COMPLETED'})[0] != 401:
+                raise AssertionError('Unauthorized status change accepted')
+            invalid_status = request(path + '/status', method='PATCH', body={'status': None}, authenticated=True)
+            if invalid_status[0] != 400 or invalid_status[2]['validationErrors'].get('status') is None:
+                raise AssertionError('Status field error missing')
             if request(path + "/status", method="PATCH", body={"status": "IN_PROGRESS"}, authenticated=True)[0] != 200:
                 raise AssertionError("Status update failed")
             page = request("/api/work-orders?status=IN_PROGRESS&priority=HIGH&page=0&size=1")[2]
             if page["page"]["totalElements"] != 1 or page["content"][0]["id"] != order["id"]:
                 raise AssertionError("Combined filter/page failed")
             print("PASS: unauthorized/invalid writes; create Location; status update; combined filter/page")
+            persisted = sql(f"SELECT title || ':' || status || ':' || priority FROM work_orders WHERE id={int(order['id'])}")
+            if persisted != body['title'] + ':IN_PROGRESS:HIGH':
+                raise AssertionError('Direct PostgreSQL state differs from API')
+            evidence.update(orderId=order['id'], title=body['title'], status='IN_PROGRESS', priority='HIGH', loopbackOnly=True)
+            evidence['checks'].extend(['401 create and status', '400 create and status field errors', '201 create', 'GET retrieve', 'PATCH status', 'filtered GET', 'direct PostgreSQL row'])
             installed = sql("SELECT installed_on::text FROM flyway_schema_history WHERE version='1'")
             table_oid = sql("SELECT 'work_orders'::regclass::oid")
             for mode in ("restart", "recreate"):
@@ -129,11 +161,17 @@ def main():
                     raise AssertionError("Migration history changed during " + mode)
                 if sql("SELECT 'work_orders'::regclass::oid") != table_oid:
                     raise AssertionError("Table recreated during " + mode)
+                if sql(f"SELECT title || ':' || status || ':' || priority FROM work_orders WHERE id={int(order['id'])}") != persisted:
+                    raise AssertionError('Database row changed during ' + mode)
+                evidence['checks'].append('persisted API and SQL values after ' + mode)
                 print("PASS: persisted row, table identity and migration history survive " + mode)
         finally:
             if created:
                 run(compose + ["down", "--volumes", "--remove-orphans"])
                 print("Cleaned only isolated verification project: " + project)
+                evidence['isolatedProjectRemoved'] = True
+        if evidence_requested:
+            (repo / 'docs' / 'M4B_LOCAL_API_EVIDENCE.json').write_text(json.dumps(evidence, indent=2) + '\n', encoding='utf-8')
 
 
 if __name__ == "__main__":

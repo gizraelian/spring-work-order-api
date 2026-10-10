@@ -20,7 +20,8 @@ public class SecurityConfig {
 
     @Bean
     SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
-        // HTTP Basic clients do not use browser sessions, so CSRF tokens add no protection here.
+        // Non-browser API demonstration only: cached browser Basic credentials remain CSRF-sensitive.
+        // Browser writes must stay blocked until a separately reviewed CSRF-safe design is adopted.
         http.csrf(csrf -> csrf.disable())
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(requests -> requests

@@ -128,6 +128,40 @@ class WorkOrderControllerTest {
                 .andExpect(jsonPath("$.message").value("Request contains an invalid value"));
     }
 
+    @Test
+    void wrongCredentialsRejectCreateAndStatus() throws Exception {
+        mockMvc.perform(post("/api/work-orders").with(httpBasic("test-user", "wrong-password"))
+                .contentType("application/json").content(objectMapper.writeValueAsString(validCreateRequest())))
+                .andExpect(status().isUnauthorized());
+        mockMvc.perform(patch("/api/work-orders/1/status").with(httpBasic("test-user", "wrong-password"))
+                .contentType("application/json").content("{\"status\":\"COMPLETED\"}"))
+                .andExpect(status().isUnauthorized());
+    }
+
+    @Test
+    void statusRequiresAuthentication() throws Exception {
+        mockMvc.perform(patch("/api/work-orders/1/status").contentType("application/json")
+                .content("{\"status\":\"COMPLETED\"}")).andExpect(status().isUnauthorized());
+    }
+
+    @Test
+    @WithMockUser
+    void nullStatusReturnsFieldError() throws Exception {
+        mockMvc.perform(patch("/api/work-orders/1/status").contentType("application/json")
+                .content("{\"status\":null}")).andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.validationErrors.status").exists());
+    }
+
+    @Test
+    @WithMockUser
+    void statusUpdateReturnsResponse() throws Exception {
+        when(workOrderService.updateStatus(1L, new com.georgeizraelian.workorder.dto.UpdateStatusRequest(WorkOrderStatus.COMPLETED))).thenReturn(sampleResponse(WorkOrderStatus.COMPLETED));
+        mockMvc.perform(patch("/api/work-orders/1/status").contentType("application/json")
+                .content("{\"status\":\"COMPLETED\"}")).andExpect(status().isOk())
+                .andExpect(jsonPath("$.id").value(1))
+                .andExpect(jsonPath("$.status").value("COMPLETED"));
+    }
+
     private CreateWorkOrderRequest validCreateRequest() {
         return new CreateWorkOrderRequest(
                 "Replace failed network switch",
@@ -138,12 +172,16 @@ class WorkOrderControllerTest {
     }
 
     private WorkOrderResponse sampleResponse() {
+        return sampleResponse(WorkOrderStatus.OPEN);
+    }
+
+    private WorkOrderResponse sampleResponse(WorkOrderStatus orderStatus) {
         LocalDateTime timestamp = LocalDateTime.of(2026, 9, 7, 10, 30);
         return new WorkOrderResponse(
                 1L,
                 "Replace failed network switch",
                 "Connectivity is intermittent.",
-                WorkOrderStatus.OPEN,
+                orderStatus,
                 WorkOrderPriority.HIGH,
                 "operations@example.com",
                 LocalDate.of(2026, 9, 15),
