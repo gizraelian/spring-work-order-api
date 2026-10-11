@@ -267,8 +267,19 @@ This project is available under the MIT License.
 
 ## M4B local workflow
 
-See [M4B design, safeguards and verification](docs/M4B_LOCAL_WORKFLOW.md). Browser writes remain blocked pending CSRF-safe authentication; typed forms are tested and local API persistence is verified separately.
+See [M4B design, safeguards and verification](docs/M4B_LOCAL_WORKFLOW.md). Historical M4B checkpoint: writes were blocked before M4C added the isolated session mode.
 
 ## M4C secure local browser workflow
 
 See [M4C verification and local setup](docs/M4C_VERIFICATION.md) and [security design](docs/M4C_SECURITY_DESIGN.md). The explicit local-browser profile/build supports session login, CSRF-protected writes and logout; production/default behavior remains isolated.
+
+## M5 full-stack verification and presentation
+
+Independently developed enterprise application engineering demonstration: Angular → HTTP/API → Spring Security → Spring Boot → JPA → PostgreSQL. Separate from commercial experience. The frontend now adds automated real Chromium acceptance against a fresh local Compose stack, including validation, create/status, reload/session restoration, SQL persistence, real inactivity expiry and logout. Existing 45 Maven tests include Testcontainers PostgreSQL/schema lifecycle and security isolation. GitHub Actions verifies; no authenticated public deployment is claimed.
+
+- [Architecture, orchestration and CI](docs/ARCHITECTURE.md)
+- [Security design summary and trade-offs](docs/SECURITY_DESIGN_SUMMARY.md)
+- [Browser verification, screenshots and safe reproduction](https://github.com/gizraelian/angular-support-dashboard/blob/main/docs/M5_E2E_VERIFICATION.md)
+- [Engineering case study and interview walkthrough](https://github.com/gizraelian/angular-support-dashboard/blob/main/docs/PORTFOLIO_CASE_STUDY.md)
+
+The frontend `pnpm e2e` command builds a uniquely tagged image from this repository's verified JAR, creates its own development database with ephemeral credentials and preserves all volumes at shutdown. Run `.\mvnw.cmd clean verify` first and set M5_BACKEND_REPO in the frontend shell when checkouts are not siblings. Default/production Basic mode remains separate from explicit dev + local-browser sessions. The production Flyway adoption procedure and new backend deployment remain separately gated.
